@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- encoding:utf-8 -*-
 from appdirs import user_cache_dir
+from json import dump, dumps, load
 from functools import lru_cache
 from requests import get, post
 from os import remove, mkdir
-from json import dump, load
 from os.path import exists
 from sys import argv
 
@@ -19,76 +19,87 @@ with open(f'{cache_dir}/cache.json') as file:
     cache = load(file)
 
 @lru_cache
+def assureData(raw: str, slice: str) -> str:
+    try:    return raw.split(slice)[1].split('</dd>')[0]
+    except: return "Not found."
+
+def assureCoordinates(result: str, num: int) -> str:
+    try:    return result.split('/')[num].split()[0]
+    except: return "Not found."
+
+
+@lru_cache
 def request(link: str) -> str:
-    if link not in list(cache):
-        print(f'connecting to {link}...')
-        result = get(link).text
-        cache[link] = result
+    return get(link).text
+
+@lru_cache
+def getLocation(ip: str, ignore_cache = False, reset_cache = False, save_json = False) -> dict:
+    global cache
+
+    if reset_cache:
+        cache = {}
+
+    if ip in list(cache) and not ignore_cache:
+        return cache[ip]
+
+    else:
+        print(f"Connecting to https://tools.keycdn.com/geo?host={ip}...")
+        raw = request(f"https://tools.keycdn.com/geo?host={ip}").split('<div class="bg-light medium rounded p-3">')[1].split("</div>")[0]
+
+        result = {
+            '':'',
+            'location':{
+                '':'',
+                'city':         assureData(raw, '<dt class="col-4">City</dt><dd class="col-8 text-monospace">'),
+                'region':       assureData(raw, '<dt class="col-4">Region</dt><dd class="col-8 text-monospace">'),
+                'postal code':  assureData(raw, '<dt class="col-4">Postal code</dt><dd class="col-8 text-monospace">'),
+                'contry':       assureData(raw, '<dt class="col-4">Country</dt><dd class="col-8 text-monospace">'),
+                'continent':    assureData(raw, '<dt class="col-4">Continent</dt><dd class="col-8 text-monospace">'),
+                'coordinates':  assureData(raw, '<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">'),
+                'latitude':     assureCoordinates(assureData(raw, '<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">'), 0),
+                'longitude':    assureCoordinates(assureData(raw, '<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">'), 1),
+                'time':         assureData(raw, '<dt class="col-4">Time</dt><dd class="col-8 text-monospace">'),
+            },
+            'network':{
+                '':'',
+                'ip':           assureData(raw, '<dt class="col-4">IP address</dt><dd class="col-8 text-monospace">'),
+                'hostname':     assureData(raw, '<dt class="col-4">Hostname</dt><dd class="col-8 text-monospace">'),
+                'provider':     assureData(raw, '<dt class="col-4">Provider</dt><dd class="col-8 text-monospace">'),
+                'asn':          assureData(raw, '<dt class="col-4">ASN</dt><dd class="col-8 text-monospace">'),
+            },
+        }
+
+        del raw
+
+        cache[ip] = result
         with open(f'{cache_dir}/cache.json', 'w') as file:
             dump(cache, file)
-        return result
-    else:
-        return cache[link]
 
-
-@lru_cache
-def getLocation(ip: str) -> dict:
-    raw = request(f"https://tools.keycdn.com/geo?host={ip}").split('<div class="bg-light medium rounded p-3">')[1].split("</div>")[0]
-
-    return {
-    'location':{
-        'city':         raw.split('<dt class="col-4">City</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'region':       raw.split('<dt class="col-4">Region</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'postal code':  raw.split('<dt class="col-4">Postal code</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'contry':       raw.split('<dt class="col-4">Country</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'continent':    raw.split('<dt class="col-4">Continent</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'coordinates':  raw.split('<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'latitude':     raw.split('<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0].split('/')[0].split()[0],
-        'longitude':    raw.split('<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0].split('/')[1].split()[0],
-        'time':         raw.split('<dt class="col-4">Time</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        },
-    'network':{
-        'ip': raw.split('<dt class="col-4">IP address</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'hostname': raw.split('<dt class="col-4">Hostname</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'provider': raw.split('<dt class="col-4">Provider</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'asn': raw.split('<dt class="col-4">ASN</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        }
-    }
-
-@lru_cache
-def getLocationForOutputing(ip: str) -> dict:
-    raw = request(f"https://tools.keycdn.com/geo?host={ip}").split('<div class="bg-light medium rounded p-3">')[1].split("</div>")[0]
-
-    return {
-    '':'',
-    'location':{
-        '':'',
-        'city':         raw.split('<dt class="col-4">City</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'region':       raw.split('<dt class="col-4">Region</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'postal code':  raw.split('<dt class="col-4">Postal code</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'contry':       raw.split('<dt class="col-4">Country</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'continent':    raw.split('<dt class="col-4">Continent</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'coordinates':  raw.split('<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'latitude':     raw.split('<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0].split('/')[0].split()[0],
-        'longitude':    raw.split('<dt class="col-4">Coordinates</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0].split('/')[1].split()[0],
-        'time':         raw.split('<dt class="col-4">Time</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        },
-    'network':{
-        '':'',
-        'ip': raw.split('<dt class="col-4">IP address</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'hostname': raw.split('<dt class="col-4">Hostname</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'provider': raw.split('<dt class="col-4">Provider</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        'asn': raw.split('<dt class="col-4">ASN</dt><dd class="col-8 text-monospace">')[1].split('</dd>')[0],
-        }
-    }
+        return result if not save_json else dumps(result)
 
 bk = '\n'
 if __name__ == "__main__":
+    ignore_cache = True if "-f" in argv or "--force" in argv else  False
+    reset_cache = True if "-r" in argv or "--reset-cache" in argv else  False
+    ignore_not_found = True if "-i" in argv or "--ignore-not-found" in argv else  False
+    save_json = True if "-o" in argv or "--output" in argv else  False
+
+
     if len(argv)-1 > 0 and not "-h" in argv and not "--help" in argv:
         for ip in argv[1:]:
-            try:     location = getLocationForOutputing(ip)
+            if "-" in ip: continue
+            try:     location = getLocation(ip, ignore_cache, reset_cache, save_json)
             except:  print(f'{ip} not found.'); continue
-            print(f'{bk*2}→ {ip}:{bk}'+f'{bk}  # '.join([f'{category + ":" if category else ""} '+'\n    · '.join([f'{element + ":" if element else ""} {location[category][element]}' for element in location[category]]) for category in location]))
+
+            if not save_json:
+                print(
+                f'{bk*2}→ {ip}:{bk}'+f'{bk}  # '.join(
+                [f'{category + ":" if category else ""} '+'\n    · '.join(
+                [f'{element + ":" if element else ""} {location[category][element]}'
+                for element in location[category] if not (location[category][element] == "Not found." and ignore_not_found)])
+                for category in location]))
+            else:
+                print(location)
     else:
         print(
 '''
